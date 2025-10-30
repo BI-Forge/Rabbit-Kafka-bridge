@@ -26,8 +26,11 @@ From the `build/` directory:
 
 ```bash
 cd build
-# default 50 msgs end-to-end
+# default 50 msgs end-to-end (plain text verification)
 make run
+
+# end-to-end with Avro verification via Schema Registry
+make run-avro
 
 # run with a specific message count (end-to-end)
 MSG_COUNT=200 make run
@@ -37,13 +40,15 @@ This will:
 2. Start docker-compose services
 3. Submit the Flink job
 4. Produce sample messages into RabbitMQ
-5. Verify all produced messages arrived to Kafka
+5. Verify delivery (plain text by default, or Avro with run-avro)
 
 Enable Schema Registry (optional, recommended):
 ```bash
 make up-sr            # start schema-registry
 make restart-flink    # restart Flink to pick up SR env vars
 ```
+
+> Note: `/subjects` will be empty until the first Avro record is written to Kafka.
 
 ## Step-by-step
 ```bash
@@ -78,6 +83,7 @@ make test-schema MSG_COUNT=20               # produces JSON to RabbitMQ, verifie
 Producer supports JSON via env:
 ```bash
 make produce MSG_COUNT=20                   # text messages (default)
+# or JSON into RabbitMQ
 docker compose -f build/docker-compose.yml run --rm -e MSG_COUNT=20 -e MSG_FORMAT=json rabbit-producer
 ```
 
@@ -91,7 +97,8 @@ docker compose -f build/docker-compose.yml exec kafka-tools kcat -b kafka:9092 -
 cd build
 make verify-avro MSG_COUNT=10 TOPIC=output_topic
 
-# latest value-schema of the topic
+# list subjects and get latest schema
+make schema-subjects
 make schema-get TOPIC=output_topic
 
 # set global compatibility policy (default suggestion: BACKWARD)
@@ -107,6 +114,7 @@ Confluent Schema Registry does not provide a built‑in web UI. Use its REST API
   - `http://localhost:8085/config`
 
 - CLI examples (already covered above):
+  - List subjects: `make schema-subjects`
   - Get latest schema: `make schema-get TOPIC=output_topic`
   - Set compatibility: `make schema-policy`
 
@@ -129,7 +137,7 @@ make down         # stop & remove containers and volumes
 - Everything runs inside Docker; no local JVM/Maven required.
 - If you change queue/topic/user/pass, update them in the compose or job env before running.
 - The Flink job uses manual acknowledgements (basicConsume with autoAck=false + basicAck). Messages are removed from RabbitMQ only after being collected and forwarded to Kafka.
- - When Schema Registry is up, the Flink pipeline serializes Kafka values as Avro and auto-registers schema in SR (subject `<topic>-value`).
+- When Schema Registry is up, the Flink pipeline serializes Kafka values as Avro in the sink and auto-registers schema in SR (subject `<topic>-value`).
 
 ## Why Flink here instead of ad‑hoc code?
 - Exactly‑once and checkpointing: built‑in state snapshots, backpressure handling, and recovery without duplicates, which is non‑trivial to implement correctly by hand.

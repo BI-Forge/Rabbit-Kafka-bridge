@@ -42,6 +42,9 @@ verify-avro:
 
 run: build up submit produce verify
 
+# End-to-end Avro run: produce -> verify-avro
+run-avro: build up submit produce verify-avro
+
 down:
 	@echo "[make] Stopping and removing containers and volumes"
 	docker compose -f $(COMPOSE_FILE) down -v
@@ -77,6 +80,10 @@ schema-policy:
 schema-get:
 	@echo "[make] Get latest schema for subject $(TOPIC)-value"
 	curl -s http://localhost:8085/subjects/$(TOPIC)-value/versions/latest | jq .
+
+schema-subjects:
+	@echo "[make] List all subjects"
+	curl -s http://localhost:8085/subjects | jq .
 
 consume-avro:
 	@echo "[make] Consuming Avro messages with SR URL=$(SR_URL)"
