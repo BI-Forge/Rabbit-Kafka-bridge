@@ -145,3 +145,98 @@ make down         # stop & remove containers and volumes
 - Connectors and ecosystem: production‑grade connectors (Kafka, filesystems, JDBC, etc.), metrics, and tooling (Flink UI).
 - Stateful stream processing: windows, timers, keyed state, watermarking when requirements grow beyond simple piping.
 - Operational maturity: proven semantics, backpressure, and monitoring simplify reliability and on‑call load.
+
+## Production deployment to Kubernetes (step-by-step)
+This is a pragmatic checklist to run the same architecture (RabbitMQ -> Flink -> Kafka + Schema Registry) in production on Kubernetes.
+
+1) Prerequisites
+- A production-grade Kubernetes cluster (managed: GKE/EKS/AKS, or on-prem).
+- kubectl and helm configured.
+- Container registry (push your images): GHCR/ECR/GCR/ACR.
+- StorageClass for persistent volumes, Ingress, certificates (e.g., cert-manager), and metrics stack (Prometheus/Grafana) recommended.
+
+2) Create namespaces and baseline policies
+```bash
+kubectl create namespace data
+kubectl create namespace streaming
+kubectl create namespace tooling
+# (optional) baseline NetworkPolicies and PodSecurity policies per org standards
+```
+
+3) Deploy Kafka (and Zookeeper) or Kafka with KRaft
+- Option A (operator): use Strimzi Operator for Kafka (recommended for prod lifecycle):
+  - Install Strimzi: `helm repo add strimzi https://strimzi.io/charts/ && helm install strimzi-kafka strimzi/strimzi-kafka-operator -n data`
+  - Apply a Kafka cluster CR (replicated brokers, persistent volumes, listeners for internal/external), and create topics `output_topic`.
+- Option B (charts): use Bitnami Kafka + Zookeeper charts with persistent volumes and proper listeners.
+
+4) Deploy Schema Registry
+- Run `confluentinc/cp-schema-registry:7.5.x` as a Deployment with a Service in `data` namespace.
+- Key envs:
+  - `SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS`: internal Kafka bootstrap (e.g., `PLAINTEXT://kafka:9092`).
+  - `SCHEMA_REGISTRY_LISTENERS`: `http://0.0.0.0:8085`.
+  - Expose as ClusterIP and optionally Ingress with TLS.
+- Add readiness/liveness probes and resource requests/limits.
+
+5) Deploy RabbitMQ
+- Use Bitnami chart: `helm repo add bitnami https://charts.bitnami.com/bitnami` then
+```bash
+helm install rabbitmq bitnami/rabbitmq -n data \
+  --set auth.username=user --set auth.password=pass \
+  --set persistence.enabled=true --set replicaCount=2
+```
+- Create a durable queue `input_queue` (via chart values, init container, or post-install Job).
+
+6) Build and push the Flink job image
+- Build the shaded JAR as in this repo, then build a Docker image with it and push to your registry:
+  - Image SHOULD include your JAR under `/opt/flink/usrlib/app.jar`.
+
+7) Run Flink in K8s
+- Recommended: Flink Kubernetes Operator (CRDs) for HA jobs with savepoints:
+  - Install: `helm repo add flink-operator https://downloads.apache.org/flink/flink-kubernetes-operator-helm-charts/ && helm install flink-operator flink-operator/flink-kubernetes-operator -n streaming`
+  - Create a `FlinkDeployment` (Job/Session) with:
+    - Parallelism and resource limits set.
+    - HA: set 2+ replicas for JobManager (where supported) and multiple TaskManagers.
+    - Env vars: `RABBIT_HOST`, `RABBIT_PORT`, `RABBIT_USER`, `RABBIT_PASS`, `RABBIT_QUEUE`, `KAFKA_BOOTSTRAP`, `KAFKA_TOPIC`, `SCHEMA_REGISTRY_URL` (ClusterIP of SR).
+    - Mount the JAR from the job image and set the entrypoint to the main class.
+    - Enable checkpointing and configure savepoint upgrade mode.
+- Alternative: Bitnami Flink chart (Session cluster) + Kubernetes Job to submit the JAR.
+
+8) Secrets and configuration
+- Store credentials in `Secret` objects (RabbitMQ, Kafka if SASL/TLS, Schema Registry if auth enabled).
+- Use `ConfigMap` for non-secrets (topics, queue names, SR URL, compatibility policy).
+- Reference envs via `envFrom` and `valueFrom`.
+
+9) Networking and security
+- Use internal Services (ClusterIP) for inter-service traffic; expose UIs via Ingress with authentication.
+- Apply NetworkPolicies to restrict egress/ingress.
+- If Kafka is TLS/SASL, configure Flink Kafka sink with truststores/JAAS via mounted secrets and `FLINK_OPTS` or config files.
+
+10) Persistence and scaling
+- Kafka/Zookeeper and RabbitMQ must use persistent volumes (adequate IOPS/throughput).
+- Right-size partitions, replication factor, retention, and quotas.
+- Horizontal scaling: increase Flink TaskManagers/parallelism; consider HPA on CPU/lag metrics.
+
+11) Observability
+- Expose metrics (Flink, Kafka, RabbitMQ, Schema Registry) to Prometheus; build Grafana dashboards.
+- Centralized logs (ELK/Opensearch). Add app logs with message ids for traceability.
+- Add a `kcat` toolbox pod in `tooling` for ad-hoc consumption and troubleshooting.
+
+12) CI/CD and rollout
+- Build images in CI, scan, sign, and push.
+- Use GitOps (Argo CD/Flux) to sync Helm/CRDs across envs.
+- Rolling upgrades of Flink jobs using savepoints; validate SR compatibility before rollout.
+
+13) Backups and DR
+- Backup Kafka/ZK (or KRaft metadata), RabbitMQ definitions, and SR subject registry (export via REST or storage snapshots).
+- Test restore and cross-zone/region failover.
+
+14) Production validation checklist
+- Load test with expected peak (x1.5 headroom) and verify end-to-end latency/lag.
+- Chaos tests: broker/node kills; verify recovery without message loss.
+- Security review: secrets at rest, TLS in transit, RBAC least privilege.
+
+References (suggested charts/operators)
+- Kafka: Strimzi Operator, Bitnami Kafka
+- RabbitMQ: Bitnami RabbitMQ
+- Flink: Apache Flink K8s Operator
+- Schema Registry: Confluent SR container (Deployment + Service)
