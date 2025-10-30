@@ -98,6 +98,20 @@ make schema-get TOPIC=output_topic
 make schema-policy
 ```
 
+### Schema Registry UI?
+Confluent Schema Registry does not provide a built‑in web UI. Use its REST API on `http://localhost:8085`.
+
+- Quick links in your browser:
+  - `http://localhost:8085/subjects`
+  - `http://localhost:8085/subjects/output_topic-value/versions`
+  - `http://localhost:8085/config`
+
+- CLI examples (already covered above):
+  - Get latest schema: `make schema-get TOPIC=output_topic`
+  - Set compatibility: `make schema-policy`
+
+If you need a graphical UI, consider running external tools (not included here) like Confluent Control Center or Redpanda Console which can connect to Schema Registry.
+
 ## Tear down
 ```bash
 cd build
