@@ -49,7 +49,7 @@ public class RabbitToKafkaJob {
         return v == null || v.isEmpty() ? def : v;
     }
 
-    /** Simple RabbitMQ polling source for small demo/testing flows. */
+    /** Simple RabbitMQ source using manual acknowledgements. */
     public static class RabbitMQSimpleSource extends RichSourceFunction<String> {
         private final String host;
         private final int port;
@@ -59,6 +59,7 @@ public class RabbitToKafkaJob {
         private volatile boolean running = true;
         private transient Connection connection;
         private transient Channel channel;
+        private transient String consumerTag;
 
         public RabbitMQSimpleSource(String host, int port, String user, String pass, String queue) {
             this.host = host;
@@ -80,23 +81,32 @@ public class RabbitToKafkaJob {
             connection = factory.newConnection();
             channel = connection.createChannel();
             channel.queueDeclare(queue, true, false, false, null);
+            channel.basicQos(50);
+
+            com.rabbitmq.client.DeliverCallback deliver = (consumerTag, delivery) -> {
+                if (!running) return;
+                String body = new String(delivery.getBody());
+                synchronized (ctx.getCheckpointLock()) {
+                    ctx.collect(body);
+                }
+                try {
+                    channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
+                } catch (Exception ignored) {}
+            };
+
+            com.rabbitmq.client.CancelCallback cancelCb = ct -> { };
+
+            consumerTag = channel.basicConsume(queue, false, deliver, cancelCb);
 
             while (running) {
-                GetResponse resp = channel.basicGet(queue, true);
-                if (resp != null) {
-                    String body = new String(resp.getBody());
-                    synchronized (ctx.getCheckpointLock()) {
-                        ctx.collect(body);
-                    }
-                } else {
-                    Thread.sleep(50);
-                }
+                Thread.sleep(200);
             }
         }
 
         @Override
         public void cancel() {
             running = false;
+            try { if (channel != null && channel.isOpen() && consumerTag != null) channel.basicCancel(consumerTag); } catch (Exception ignored) {}
             try { if (channel != null && channel.isOpen()) channel.close(); } catch (Exception ignored) {}
             try { if (connection != null && connection.isOpen()) connection.close(); } catch (Exception ignored) {}
         }

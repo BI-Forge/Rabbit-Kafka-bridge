@@ -3,6 +3,7 @@
 ROOT := $(abspath ..)
 COMPOSE_FILE := $(ROOT)/build/docker-compose.yml
 TOPIC ?= output_topic
+MSG_COUNT ?= 50
 
 build:
 	@echo "[make] Building artifacts and images"
@@ -18,11 +19,11 @@ submit:
 
 produce:
 	@echo "[make] Producing test messages to RabbitMQ"
-	docker compose -f $(COMPOSE_FILE) run --rm rabbit-producer
+	 docker compose -f $(COMPOSE_FILE) run -e MSG_COUNT=$(MSG_COUNT) --rm rabbit-producer
 
 verify:
 	@echo "[make] Verifying messages in Kafka topic=$(TOPIC)"
-	bash $(ROOT)/tests/verify_kafka.sh $(TOPIC)
+	 bash $(ROOT)/tests/verify_kafka.sh $(TOPIC) $(MSG_COUNT)
 
 run: build up submit produce verify
 
