@@ -52,6 +52,25 @@ Override topic for verification:
 make verify TOPIC=my_topic
 ```
 
+## Tests
+Run from `build/`.
+
+- Load test (produce N messages, verify all consumed):
+```bash
+make test-load MSG_COUNT=10000              # topic=output_topic by default
+make test-load MSG_COUNT=50000 TOPIC=my_topic
+```
+
+- Schema test (JSON format end-to-end):
+```bash
+make test-schema MSG_COUNT=20               # produces JSON to RabbitMQ, verifies JSON in Kafka
+```
+Producer supports JSON via env:
+```bash
+make produce MSG_COUNT=20                   # text messages (default)
+docker compose -f build/docker-compose.yml run --rm -e MSG_COUNT=20 -e MSG_FORMAT=json rabbit-producer
+```
+
 ## Tear down
 ```bash
 cd build

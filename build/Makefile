@@ -42,3 +42,13 @@ status:
 clean: down
 	@echo "[make] Clean complete"
 
+.PHONY: test-load test-schema
+
+test-load:
+	@echo "[make] Load test: MSG_COUNT=$(MSG_COUNT), topic=$(TOPIC)"
+	bash $(ROOT)/tests/load_test.sh $(MSG_COUNT) $(TOPIC)
+
+test-schema:
+	@echo "[make] Schema test: JSON, MSG_COUNT=$(MSG_COUNT), topic=$(TOPIC)"
+	bash $(ROOT)/tests/schema_test.sh $(MSG_COUNT) $(TOPIC)
+

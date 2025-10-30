@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import pika
+import json
 
 
 def main():
@@ -11,6 +12,7 @@ def main():
     password = os.getenv("RABBIT_PASS", "pass")
     queue = os.getenv("RABBIT_QUEUE", "input_queue")
     count = int(os.getenv("MSG_COUNT", "50"))
+    fmt = os.getenv("MSG_FORMAT", "text").lower()
 
     credentials = pika.PlainCredentials(user, password)
     params = pika.ConnectionParameters(host=host, port=port, virtual_host="/", credentials=credentials)
@@ -30,7 +32,16 @@ def main():
     channel.queue_declare(queue=queue, durable=True)
 
     for i in range(count):
-        body = f"test-message-{i}"
+        if fmt == "json":
+            payload = {
+                "id": i,
+                "payload": f"test-message-{i}",
+                "ts": int(time.time() * 1000)
+            }
+            body = json.dumps(payload)
+        else:
+            body = f"test-message-{i}"
+
         channel.basic_publish(exchange="", routing_key=queue, body=body.encode("utf-8"))
         print(f"[producer] sent {body}")
         time.sleep(0.05)
