@@ -10,6 +10,7 @@
     <flink.version>1.17.2</flink.version>
     <scala.binary.version>2.12</scala.binary.version>
     <connector.version>3.1.0-1.17</connector.version>
+    <confluent.version>7.5.3</confluent.version>
   </properties>
 
   <dependencies>
@@ -36,6 +37,35 @@
       <groupId>com.rabbitmq</groupId>
       <artifactId>amqp-client</artifactId>
       <version>5.19.0</version>
+    </dependency>
+
+    <!-- Avro & Confluent serializers for Schema Registry integration -->
+    <dependency>
+      <groupId>org.apache.avro</groupId>
+      <artifactId>avro</artifactId>
+      <version>1.11.3</version>
+    </dependency>
+    <dependency>
+      <groupId>io.confluent</groupId>
+      <artifactId>kafka-avro-serializer</artifactId>
+      <version>${confluent.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.confluent</groupId>
+      <artifactId>kafka-schema-serializer</artifactId>
+      <version>${confluent.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka-clients</artifactId>
+      <version>3.5.1</version>
+    </dependency>
+
+    <!-- JSON parsing for mapping incoming Rabbit messages to Avro -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>2.16.1</version>
     </dependency>
 
     <dependency>
@@ -81,5 +111,13 @@
       </plugin>
     </plugins>
   </build>
+
+  <repositories>
+    <repository>
+      <id>confluent</id>
+      <name>Confluent</name>
+      <url>https://packages.confluent.io/maven/</url>
+    </repository>
+  </repositories>
 </project>
 
