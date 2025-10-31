@@ -120,6 +120,101 @@ Confluent Schema Registry does not provide a built‑in web UI. Use its REST API
 
 If you need a graphical UI, consider running external tools (not included here) like Confluent Control Center or Redpanda Console which can connect to Schema Registry.
 
+## SQL Access to Kafka Topics (Flink SQL Client)
+
+Flink provides a SQL Client for querying Kafka topics with Schema Registry integration.
+
+### Prerequisites
+
+Flink SQL Client requires the Kafka connector and Avro format support. These are already included in Flink 1.17.2, but if you need Schema Registry integration, ensure the Confluent Avro format is available.
+
+### Start Flink SQL Client
+
+```bash
+cd build
+make flink-sql    # interactive SQL client
+```
+
+### SQL Examples
+
+#### 1. Create table from Kafka topic with Avro/Schema Registry
+
+```sql
+CREATE TABLE output_topic_table (
+    id INT,
+    payload STRING,
+    ts BIGINT
+) WITH (
+    'connector' = 'kafka',
+    'topic' = 'output_topic',
+    'properties.bootstrap.servers' = 'kafka:9092',
+    'properties.group.id' = 'flink-sql-consumer',
+    'scan.startup.mode' = 'earliest-offset',
+    'format' = 'avro-confluent',
+    'avro-confluent.schema-registry.url' = 'http://schema-registry:8085',
+    'avro-confluent.schema-registry.subject' = 'output_topic-value'
+);
+```
+
+#### 2. Query messages
+
+```sql
+-- Select all messages (limited by default)
+SELECT * FROM output_topic_table;
+
+-- With LIMIT
+SELECT id, payload, ts 
+FROM output_topic_table 
+LIMIT 10;
+
+-- Filter
+SELECT id, payload, ts
+FROM output_topic_table
+WHERE id > 5
+LIMIT 20;
+```
+
+#### 3. Aggregations
+
+```sql
+-- Count
+SELECT COUNT(*) as total FROM output_topic_table;
+
+-- Group by
+SELECT 
+    SUBSTRING(payload, 1, 10) as prefix,
+    COUNT(*) as count,
+    MAX(ts) as latest_ts
+FROM output_topic_table
+GROUP BY SUBSTRING(payload, 1, 10);
+```
+
+#### 4. Using SQL file
+
+```bash
+# Run examples from file
+make flink-sql-examples
+
+# Or manually
+docker compose -f build/docker-compose.yml exec -T flink-jobmanager \
+  /opt/flink/bin/sql-client.sh embedded \
+  -f build/flink-sql-examples.sql
+```
+
+#### 5. Quick init table
+
+```bash
+make flink-sql-init TOPIC=output_topic
+# Then in SQL client: SELECT * FROM output_topic_table LIMIT 10;
+```
+
+### Notes
+
+- Flink SQL Client connects to the Flink JobManager (already running in the stack)
+- The `avro-confluent` format requires Schema Registry to be running (`make up-sr`)
+- Schema is automatically read from Schema Registry using the subject `<topic>-value`
+- For more examples, see `build/flink-sql-examples.sql`
+
 ## Tear down
 ```bash
 cd build

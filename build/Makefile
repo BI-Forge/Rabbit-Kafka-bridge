@@ -91,3 +91,33 @@ consume-avro:
 	   kcat -b kafka:9092 -C -t $(TOPIC) -o beginning -c $(MSG_COUNT) \
 	   -s value=avro -r $(SR_URL) -f '%s\n'
 
+# Flink SQL Client
+flink-sql:
+	@echo "[make] Starting Flink SQL Client"
+	docker compose -f $(COMPOSE_FILE) exec flink-jobmanager \
+	  /opt/flink/bin/sql-client.sh embedded
+
+flink-sql-init:
+	@echo "[make] Creating Flink SQL table for $(TOPIC) with Avro/Schema Registry"
+	docker compose -f $(COMPOSE_FILE) exec -T flink-jobmanager \
+	  /opt/flink/bin/sql-client.sh embedded \
+	  -i /dev/stdin <<< "CREATE TABLE $(TOPIC)_table ( \
+	    id INT, \
+	    payload STRING, \
+	    ts BIGINT \
+	  ) WITH ( \
+	    'connector' = 'kafka', \
+	    'topic' = '$(TOPIC)', \
+	    'properties.bootstrap.servers' = 'kafka:9092', \
+	    'properties.group.id' = 'flink-sql-consumer', \
+	    'scan.startup.mode' = 'earliest-offset', \
+	    'format' = 'avro-confluent', \
+	    'avro-confluent.schema-registry.url' = 'http://schema-registry:8085' \
+	  );"
+
+flink-sql-examples:
+	@echo "[make] Running Flink SQL examples from file"
+	docker compose -f $(COMPOSE_FILE) exec -T flink-jobmanager \
+	  /opt/flink/bin/sql-client.sh embedded \
+	  -f $(ROOT)/build/flink-sql-examples.sql || true
+
